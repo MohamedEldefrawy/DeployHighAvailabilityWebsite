@@ -1,0 +1,169 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Mohamed Eldefrawy / Creating Servers instances.
+Parameters: # Parameters from infra-params.json
+  EnvironmentName:
+    Description: An Environment name that will be prefixed to resources
+    Type: String
+  InfraEnvironmentName:
+    Description: An Environment name of the infrastructure
+    Type: String
+  DatabaseUser:
+    Description: RDS database user
+    Type: String
+  DatabasePassword:
+    Description: RDS database password
+    Type: String
+  DatabaseEngine:
+    Description: RDS database password
+    Type: String
+Resources:
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "SecurityGroup for Load balancer" # Required
+      SecurityGroupEgress: # Open HTTP inbound port
+        - IpProtocol: tcp
+          ToPort: 80
+          FromPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          ToPort: 80
+          FromPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupIngress: # Open HTTP outbound port
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} - sg-LB
+      VpcId:
+        Fn::ImportValue: !Sub ${InfraEnvironmentName}-VPC
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "SecurityGroup for Load balancer" # Required
+      SecurityGroupIngress:
+        - IpProtocol: tcp # Open HTTP inbound port
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp # Open SSH inbound port
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress: # Allow all outbound traffic
+        - IpProtocol: tcp
+          FromPort: 0 # First port
+          ToPort: 65535 # last port
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${EnvironmentName} - sg-WebServer
+      VpcId:
+        Fn::ImportValue: !Sub "${InfraEnvironmentName}-VPC"
+
+  WebAppGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - Fn::ImportValue: !Sub "${InfraEnvironmentName}-PrivateSubnets"
+      LaunchConfigurationName: !Ref WebAppLaunchConfig
+      MinSize: "3"
+      MaxSize: "5"
+      HealthCheckGracePeriod: 60
+      HealthCheckType: ELB
+
+  WebAppLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo apt upgrade -y
+          sudo apt update -y
+          sudo apt install apache2 -y
+          sudo systemctl start apache2.service
+          cd /var/www/html
+          echo "Udacity Demo Web Server Up and Running!" > index.html
+      ImageId: ami-00874d747dde814fa
+      KeyName: myKey
+      SecurityGroups:
+        - Ref: WebServerSecurityGroup
+      InstanceType: t2.medium
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sdk"
+          Ebs:
+            VolumeSize: "10"
+
+  WebAppLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - Fn::ImportValue: !Sub "${InfraEnvironmentName}-PublicSubnet1"
+        - Fn::ImportValue: !Sub "${InfraEnvironmentName}-PublicSubnet2"
+
+      SecurityGroups:
+        - Ref: LoadBalancerSecurityGroup
+
+  WebAppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: "${InfraEnvironmentName}-VPC"
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: WebAppTargetGroup
+      LoadBalancerArn:
+        Ref: WebAppLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  ALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref "WebAppTargetGroup"
+      Conditions:
+        - Field: path-pattern
+          Values: [/*]
+      ListenerArn: !Ref "Listener"
+      Priority: 1
+
+  DbSecurityByEC2SecurityGroup:
+    Type: AWS::RDS::DBSecurityGroup
+    Properties:
+      GroupDescription: "Ingress for Amazon EC2 security group"
+      DBSecurityGroupIngress:
+        - EC2SecurityGroupId: "sg-07e28973c9723274e"
+          EC2SecurityGroupOwnerId: "496741084829"
+
+  DBinstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBSecurityGroups:
+        - Ref: "DbSecurityByEC2SecurityGroup"
+      AllocatedStorage: "5"
+      DBInstanceClass: "db.t3.small"
+      Engine: !Sub ${DatabaseEngine}
+      MasterUsername: !Sub ${DatabaseUser}
+      MasterUserPassword: !Sub ${DatabasePassword}
+      DeletionProtection: false
+      MultiAZ: false
+    DeletionPolicy: "Retain"

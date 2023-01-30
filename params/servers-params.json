@@ -1,0 +1,21 @@
+[{
+        "ParameterKey": "EnvironmentName",
+        "ParameterValue": "StackServersProject"
+    },
+    {
+        "ParameterKey": "InfraEnvironmentName",
+        "ParameterValue": "StackNetworkProject"
+    },
+    {
+        "ParameterKey": "DatabaseUser",
+        "ParameterValue": "admin"
+    },
+    {
+        "ParameterKey": "DatabasePassword",
+        "ParameterValue": "12345678"
+    },
+    {
+        "ParameterKey": "DatabaseEngine",
+        "ParameterValue": "MySql"
+    }
+]
