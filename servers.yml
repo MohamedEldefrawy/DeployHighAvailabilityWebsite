@@ -7,15 +7,6 @@ Parameters: # Parameters from infra-params.json
   InfraEnvironmentName:
     Description: An Environment name of the infrastructure
     Type: String
-  DatabaseUser:
-    Description: RDS database user
-    Type: String
-  DatabasePassword:
-    Description: RDS database password
-    Type: String
-  DatabaseEngine:
-    Description: RDS database password
-    Type: String
 Resources:
   LoadBalancerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -145,25 +136,3 @@ Resources:
           Values: [/*]
       ListenerArn: !Ref "Listener"
       Priority: 1
-
-  DbSecurityByEC2SecurityGroup:
-    Type: AWS::RDS::DBSecurityGroup
-    Properties:
-      GroupDescription: "Ingress for Amazon EC2 security group"
-      DBSecurityGroupIngress:
-        - EC2SecurityGroupId: "sg-07e28973c9723274e"
-          EC2SecurityGroupOwnerId: "496741084829"
-
-  DBinstance:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      DBSecurityGroups:
-        - Ref: "DbSecurityByEC2SecurityGroup"
-      AllocatedStorage: "5"
-      DBInstanceClass: "db.t3.small"
-      Engine: !Sub ${DatabaseEngine}
-      MasterUsername: !Sub ${DatabaseUser}
-      MasterUserPassword: !Sub ${DatabasePassword}
-      DeletionProtection: false
-      MultiAZ: false
-    DeletionPolicy: "Retain"
